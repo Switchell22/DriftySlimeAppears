@@ -36,6 +36,25 @@ namespace Game.Scripts
             StartCoroutine(ExecutePhaseStartCombat());
         }
 
+        private void DecreaseTime()
+        {
+            if (!busy)
+            {
+                GameDataManager.Instance.CurrentData.timeRemaining--;
+            }
+
+            if(GameDataManager.Instance.CurrentData.timeRemaining <= 0f)
+            {
+                Debug.Log("Ran out of time for turn.");
+                EndTurn();
+            }
+        }
+
+        private void ResetTimer()
+        {
+            GameDataManager.Instance.CurrentData.timeRemaining = 15f;
+        }
+
         private IEnumerator DrawUpToHandSize()
         {
             yield return new WaitForSeconds(0.2f);
@@ -61,6 +80,40 @@ namespace Game.Scripts
             _handView.Sort();
         }
 
+        public IEnumerator DrawCards(int amountToDraw)
+        {
+            Debug.Log("Drawing cards...");
+
+            yield return new WaitForSeconds(0.2f);
+
+            int cardsDrawn = 0;
+
+            while (cardsDrawn < amountToDraw )
+            {
+                if (deck.drawPile.Count == 0)
+                {
+                    if (deck.discardPile.Count > 0)
+                    {
+                        deck.ShuffleDiscardIntoDeck();
+                    }
+                    else
+                    {
+                        //Break out of loop. We can't draw any more because we have no cards left to draw.
+                        break;
+                    }
+                }
+                var card = deck.DrawNext();
+                _handView.AddDrawnCard(card);
+
+                cardsDrawn++;
+
+                yield return new WaitForSeconds(0.2f);
+            }
+
+            Debug.Log($"Number of cards drawn: {cardsDrawn}");
+            _handView.Sort();
+        }
+
         private IEnumerator DiscardHand()
         {
             while (deck.currentHand.Count > 0)
@@ -74,6 +127,8 @@ namespace Game.Scripts
 
         private IEnumerator ExecutePhaseStartCombat()
         {
+            Debug.Log("Turn start.");
+            
             busy = true;
             deck = _dataManager.CurrentData.currentDeck;
 
@@ -83,6 +138,8 @@ namespace Game.Scripts
 
             GameDataManager.Instance.CurrentData.day = 1;
             bannerView.Show($"Day {GameDataManager.Instance.CurrentData.day}");
+
+            InvokeRepeating("DecreaseTime", 1.0f, 1.0f);
 
             deck.ShuffleAllIntoDeck();
             yield return DrawUpToHandSize();
@@ -131,6 +188,16 @@ namespace Game.Scripts
                 {
                     enemy.AnimateAttack(target.transform);
                     target.Damage(1);
+                }
+                else
+                {
+                    enemy.AnimateAttack(this.transform);
+                    GameDataManager.Instance.CurrentData.hp--;
+
+                    if(GameDataManager.Instance.CurrentData.hp <= 0)
+                    {
+
+                    }
                 }
                 yield return new WaitForSeconds(0.3f);
             }
@@ -184,9 +251,13 @@ namespace Game.Scripts
 
         private IEnumerator ExecutePhaseEndOfTurn()
         {
+            Debug.Log("Turn end.");
+            
             busy = true;
 
-            yield return DiscardHand();
+            ResetTimer();
+
+            //yield return DiscardHand();
 
             yield return ExecuteEnemyAttacks();
 
@@ -208,15 +279,22 @@ namespace Game.Scripts
                 yield return new WaitForSeconds(1f);
             }
 
-            yield return dayNightManager.ChangeToDay();
+            if (GameDataManager.Instance.CurrentData.hp > 0)
+            {
+                yield return dayNightManager.ChangeToDay();
 
-            GameDataManager.Instance.CurrentData.day += 1;
-            bannerView.Show($"Day {GameDataManager.Instance.CurrentData.day}");
-            refreshEvent.Raise();
+                GameDataManager.Instance.CurrentData.day += 1;
+                bannerView.Show($"Day {GameDataManager.Instance.CurrentData.day}");
+                refreshEvent.Raise();
 
-            yield return DrawUpToHandSize();
+                //yield return DrawUpToHandSize();
 
-            busy = false;
+                busy = false;
+            }
+            else
+            {
+                Invoke("QuitGame", 3f);
+            }
         }
 
         private IEnumerator ExecuteDiscard(CardInstance cardInstance)
@@ -273,7 +351,7 @@ namespace Game.Scripts
 
         public void OnAllyUnsummon(AllyInstance ally)
         {
-            var card = new CardInstance("Card_Knight");
+            var card = new CardInstance("Card_Turnip");
             deck.discardPile.Add(card);
             _handView.AnimateAddedCard(card);
             refreshEvent.Raise();
@@ -306,5 +384,19 @@ namespace Game.Scripts
             StartCoroutine(ExecuteDiscard(cardInstance));
         }
 
+        // Function to quit the game
+        public void QuitGame()
+        {
+            // Check if the game is running in the Unity editor or a standalone build
+#if UNITY_EDITOR
+            // If running in Unity editor, stop the editor from playing
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+        // If running in a standalone build, quit the application
+        Application.Quit();
+#endif
+        }
     }
+
 }
+
